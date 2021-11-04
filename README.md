@@ -16,7 +16,7 @@ The R code used to perform the analysis was collated into this [this Rmd file](h
 The project involved us choosing a dataset and then performing a time series analysis via 2 methods:
 
 1. Detrend and deseaonalize the data and then use ARMA modeling techniques to analyze said data. We were to compare and contrast different ARMA models and choose the one that appeared to be the best fit and explain why we thought it was the best fit.
-2. Difference the data and fit an appropriate SARIMA model. Here, we were also assigned to look at competing SARIMA models and choose the best one.
+2. Difference the data and fit an appropriate SARIMA model. Here, we were also assigned to look at competing SARIMA models and chose the best one.
 
 ## Results
 The final model I decided upon was:
