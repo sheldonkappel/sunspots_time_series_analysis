@@ -8,6 +8,6 @@ The R code used to perform the analysis was collated into this [this Rmd file](h
 
 ## Concepts Involved
 * EDA (Exploratory Data Analysis)
-* ARIMA (Autoregressive Integrated Moving Average) AND SARIMA (Seasonal Autoregressive Integrated Moving Average) modeling
-* ARMA (Autoregressive-moving-average modeling) techniques
+* ARIMA (Autoregressive Integrated Moving Average) and SARIMA (Seasonal Autoregressive Integrated Moving Average) modeling
+* ARMA (Autoregressive-moving-average) modeling techniques
 * Forecasting and estimation
