@@ -9,5 +9,16 @@ The R code used to perform the analysis was collated into this [this Rmd file](h
 ## Concepts Involved
 * EDA (Exploratory Data Analysis)
 * ARIMA (Autoregressive Integrated Moving Average) and SARIMA (Seasonal Autoregressive Integrated Moving Average) modeling
-* ARMA (Autoregressive-moving-average) modeling techniques
+* ARMA (Autoregressive-moving-average) modeling
 * Forecasting and estimation
+
+## Guidelines
+The project involved us choosing a dataset and then performing a time series analysis via 2 methods:
+
+1. Detrend and deseaonalize the data and then use ARMA modeling techniques to analyze said data. We were to compare and contrast different ARMA models and choose the one that appeared to be the best fit and explain why we thought it was the best fit.
+2. Difference the data and fit an appropriate SARIMA model. Here, we were also assigned to look at competing SARIMA models and choose the best one.
+
+## Results
+The final model I chose to be:
+
+<img src = "capture.PNG" alt = "">
