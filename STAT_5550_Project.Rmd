@@ -1,0 +1,289 @@
+---
+title: "STAT 5550 Project Rmd"
+author: "Sheldon Kappel"
+date: "4/25/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(astsa)
+library(forecast)
+```
+
+# Introduction
+
+  For this project, I chose to examine the the fluctuation of the average total number of sunspots per month. Sunspots are areas of lower temperature on the surface of the Sun caused by undulations in the solar magnetic field. These magnetic oscillations create disturbances in the convection of the Sun's gaseous exterior, creating a zone that is on average one third cooler than the surrounding space. This difference in temperature creates a dark discoloration in contrast to the rest of the Sun. The number of sunspots waxes and wanes in accordance with an approximately eleven year solar cycle, in which time the Sun's magnetic field changes polarity. 
+  In this analysis, I attempt to accurately model this phenomena, using data recorded by the Solar Influences Data Analysis Center, the solar physics research department of the Royal Observatory of Belgium.
+  
+The dataset is located on kaggle: 
+https://www.kaggle.com/robervalt/sunspots#Sunspots.csv
+  
+
+# Models for Trend and Seasonality
+The original dataset began in January 1749 and ended in December 2019. For this assignment, I instead chose to start my examination at January 1950. Below is a plot of the data along with its ACF plot:
+
+```{r, echo = FALSE}
+# load in the data
+sunspots.data <- read.csv("~/Sunspots.csv", header = TRUE)
+
+# 
+sunspots_1950 = sunspots.data[2413:nrow(sunspots.data),]
+sunspots = sunspots_1950[,3]
+
+sunspots.ts = ts(sunspots, start = c(1950, 1), end = c(2019, 12), frequency = 12)
+
+plot(sunspots.ts, ylab = "Number of Sunspots", main = "Monthly Mean Number of Sunspots")
+abline(v = c(1958, 1969, 1980, 1991, 2002, 2013), lty = 2, col = "red")
+
+acf(sunspots.ts, lag.max = 400, main = "ACF plot")
+abline(v = c(11,22), lty = 2, col = "red")
+```
+
+Looking at these plots, there obviously exists some non-stationarity, mainly of course due to the easily visible seasonality but also because of a slight downward trend between 1950 and 2019.
+
+
+Also note the recurrence of peaks occurring at eleven year intervals. These peaks however have quite a large range in their differences, thus resulting in a non-constant variance. I attempted to "even out" these maxima by performing a square root transformation.
+
+```{r, echo = FALSE}
+sqrt_sunspots = sqrt(sunspots.ts)
+sqrt_sunspots.ts = ts(sqrt_sunspots, start = c(1950, 1), end = c(2019, 12), frequency = 12)
+
+plot(sqrt_sunspots.ts, ylab = "Sqrt of Number of Sunspots", main = "Sqrt of Monthly Mean Number of Sunspots")
+```
+
+The transformation definitely helped reduce the differences in the peaks.
+
+I next applied a centered moving average filter to help remove the finer variation between the steps,
+
+```{r, echo = FALSE}
+v = filter(sqrt_sunspots.ts, rep(1/3, 3), sides=2)
+v[1] = sqrt_sunspots.ts[1]
+v[length(sqrt_sunspots.ts)] = sqrt_sunspots.ts[length(sqrt_sunspots.ts)]
+
+plot(v, ylab = "Sqrt of Number of Sunspots", main = "Smoothed Sqrt of Monthly Mean Number of Sunspots")
+```
+
+and then I removed the linear trend.
+
+```{r, echo = FALSE}
+linear.lm = lm(v ~ time(v))
+
+v_linear_removed = v - fitted(linear.lm)
+
+plot(v_linear_removed, ylab = "Sqrt of Number of Sunspots", main = "Linear Trend Removed")
+abline(h = 0, lty = 2, col = "red")
+```
+
+I proceeded to model the seasonality. A glance at the plot shows that there is still much seasonality to be accounted for.
+
+```{r, echo = FALSE}
+# I chose a harmonic regression model with d = 11 (from the 11 year solar cycle)
+z1 = sin(2 * pi * time(sunspots.ts) / 11)
+z2 = cos(2 * pi * time(sunspots.ts) / 11)
+
+seasonal.lm = lm(v_linear_removed ~ 0 + z1 + z2)
+
+plot(v_linear_removed, ylab = "Sqrt of Number of Sunspots", main = "Seasonality Modeled without Linear Trend")
+abline(h = 0, lty = 2, col = "red")
+lines(c(time(v)), fitted(seasonal.lm), col = "blue")
+```
+
+The plot with both the linearity and seasonality removed is provided below.
+
+```{r, echo = FALSE}
+v_linear_and_seasonal_removed = v_linear_removed - fitted(seasonal.lm)
+
+plot(v_linear_and_seasonal_removed, ylab = "Sqrt of Number of Sunspots", main = "Residual Series")
+abline(h = 0, lty = 2, col = "red")
+```
+
+Examining the plots below, it is apparent that the ACF function never really "cuts off," thus removing the possibility of solely an MA model for the residual data. Looking at the PACF plot with max lag = 90, I deduced that the pacf cuts off after lag 16 and tails off after lag 14. This led me to consider two models: AR(16) and ARMA(14,14).
+
+```{r, echo = FALSE}
+z.ts = v_linear_and_seasonal_removed
+
+acf(z.ts, lag.max = 90, xlab = "Lag; lag.max = 90", main = "ACF Plot of Residual Series")
+pacf(z.ts, lag.max = 90, xlab = "Lag; lag.max = 90", main = "PACF Plot of Residual Series")
+
+acf(z.ts, lag.max = 400, xlab = "Lag; lag.max = 400", main = "ACF Plot of Residual Series")
+pacf(z.ts, lag.max = 400, xlab = "Lag; lag.max = 400", main = "PACF Plot of Residual Series")
+```
+
+
+
+For the AR(16) model, I found that only $\hat{\phi_1}$, $\hat{\phi_2}$, and $\hat{\phi_4}$ were significant at the 95% level. I thus considered the AR(4) subset model where $\hat{\phi_2} = 0$. This gives a residual series model of
+
+$$
+y_t = 1.1317y_{t-1} - .5552y_{t-3} + .3892y_{t-4} + w_t, \quad \textrm{with}  \quad w_t \sim\ iid \; N(0, .2379) \quad \textrm{and} \quad AIC_c = 1.415
+$$
+
+```{r, echo = FALSE, message=FALSE, results = 'hide'}
+library(astsa)
+
+arma.4_0 = sarima(z.ts, 4, 0, 0, no.constant = T, fixed = c(NA, 0, NA, NA), details = T)
+arma.4_0
+```
+
+For the ARMA(14,14) model, I found that only $\hat{\phi_1}$, $\hat{\theta_1}$, and $\hat{\theta_2}$ were significant at the 95% level. I thus considered the ARMA(1,2) model. This gives a residual series model of
+
+$$
+y_t = .792y_{t-1} + w_t + .9991w_{t-1} + w_{t-2}, \quad \textrm{with} \quad w_t \sim\ iid \; N(0, .1809) \quad \textrm{and} \quad AIC_c = 1.156
+$$
+
+
+```{r, echo = FALSE, message = FALSE, results = 'hide'}
+arma.1_2 = sarima(z.ts, 1, 0, 2, no.constant = T, details = T)
+arma.1_2
+```
+
+
+Both models' residuals fit the Q-Q plot well. However, both models raise causes of concern since their p-values for the Ljung-Box statistic test are considerably low and their ACFs do not immediately taper to zero, thus casting doubt to the theory that the residuals are white noise. 
+
+With this noted, I personally would go with the ARMA(1,2) model. One of the reasons for this is because the corrected AIC score is lower for the ARMA(1,2) model, but also because the ACF values jut out less and decrease smoother at higher lags than the AR(4) model.
+
+
+```{r, echo = FALSE}
+z.sim.4_0 = arima.sim(model=list(ar=c(coef(arma.4_0$fit)[1], 0, coef(arma.4_0$fit)[3], coef(arma.4_0$fit)[4])), n = 840, sd=sqrt(arma.4_0$fit$sigma2))
+z.sim.4_0.ts = ts(z.sim.4_0, start = c(1950, 1), end = c(2019, 12), frequency = 12)
+
+
+z.sim.1_2 = arima.sim(model=list(ar=coef(arma.1_2$fit)[1], ma = c(coef(arma.1_2$fit)[2], coef(arma.1_2$fit)[3]), sd=sqrt(arma.1_2$fit$sigma2)), n = 840)
+z.sim.1_2.ts = ts(z.sim.1_2, start = c(1950, 1), end = c(2019, 12), frequency = 12)
+```
+
+
+The histogram of the ARMA(1,2) model is shown below and appepars to be unimodal and fit the normality assumptions.
+
+
+```{r, echo = FALSE}
+hist(z.ts - z.sim.1_2.ts, xlab = "ARMA(1,2) model subtracted from the Detrended, Deseasonalized Model", main = "Histogram of Residuals from ARMA(1,2) model")
+```
+
+
+All together, the model I formed is given by
+
+
+$$
+sqrt(x_t) = 109.2597 - .0507t + 1.27sin(2\pi*t/11) + 4.685cos(2\pi*t/11) + y_t, \quad y_t = .792y_{t-1} + w_t + .9991w_{t-1} + w_{t-2} \quad \textrm{with} \quad w_t \sim\ iid \; N(0, .1809)
+$$
+
+The original dataset extends all the way to December 2019. Currently, it is April 2020, meaning January, February, and March can be forecasted and compared against the actual recorded monthly number of sunspots for the past 3 months. These "actual" values were recorded by the same Belgian observatory.
+
+
+```{r, echo = FALSE}
+arma.1_2 = arima(z.ts, order = c(1, 0, 2), include.mean = F)
+arma.1_2.predict = predict(arma.1_2, n.ahead=3)
+
+
+# function to add back in the trends and undo the sqrt transformation
+compute <- function(t, y_t_prediction) {
+  result = 109.2597  - .0507 * t + 1.27 * sin(2*pi*t/11) + 4.685 * cos(2*pi*t/11) + y_t_prediction
+  return(result^2)
+}
+
+# January 2020 prediction and CI 
+arma.1_2.predict_Jan_2020 = compute(2020, arma.1_2.predict$pr[1])
+arma.1_2.predict_Jan_2020_CI = c(compute(2020, arma.1_2.predict$pr[1] - 1.96 * arma.1_2.predict$se[1]), compute(2020, arma.1_2.predict$pr[1] + 1.96 * arma.1_2.predict$se[1]))
+
+# February 2020 prediction and CI
+arma.1_2.predict_Feb_2020 = compute(2020 + 1/12, arma.1_2.predict$pr[2])
+arma.1_2.predict_Feb_2020_CI = c(compute(2020, arma.1_2.predict$pr[2] - 1.96 * arma.1_2.predict$se[2]), compute(2020, arma.1_2.predict$pr[2] + 1.96 * arma.1_2.predict$se[2]))
+
+# March 2020 prediction and CI
+arma.1_2.predict_March_2020 = compute(2020 + 2/12, arma.1_2.predict$pr[3])
+arma.1_2.predict_March_2020_CI = c(compute(2020, arma.1_2.predict$pr[3] - 1.96 * arma.1_2.predict$se[3]), compute(2020, arma.1_2.predict$pr[3] + 1.96 * arma.1_2.predict$se[3]))
+
+
+
+
+
+arma.1_2.predict_Jan_2020
+arma.1_2.predict_Jan_2020_CI
+
+arma.1_2.predict_Feb_2020
+arma.1_2.predict_Feb_2020_CI
+
+arma.1_2.predict_March_2020
+arma.1_2.predict_March_2020_CI
+```
+
+
+# SARIMA Modeling
+
+```{r}
+diff = diff(sunspots.ts)
+plot(diff, ylab = "Sqrt of Number of Sunspots")
+abline(h = 0, lty = 2, col = "red")
+```
+ 
+ 
+A single seasonal differencing appears to adequately remove the linear trend.
+
+
+```{r, echo = FALSE}
+acf(diff, lag.max = 80, xlab = "Lag; lag.max = 80")
+pacf(diff, lag.max = 80, xlab = "Lag; lag.max = 80")
+
+acf(diff, lag.max = 200, xlab = "Lag; lag.max = 200")
+pacf(diff, lag.max = 200, xlab = "Lag; lag.max = 200")
+```
+
+The ACF appears to tail off after lag = 1 and cut off after lag h = 2. The PACF could be said to tail off after lag = 1 and lag = 2. This would suggest the possibility of a model in the ballpark of ARMA(2,2) or MA(2) for the nonseasonal component.
+
+*Note: I refer to a "season" as one of the eleven years comprising the solar cycle.
+
+```{r}
+# recall that 11 * 12 = 132 months for a full cycle in this analysis
+ACF = acf(diff, lag.max=132*10, plot=F)
+PACF = pacf(diff, lag.max=132*10, plot=F)
+
+ACF.132 = ACF$acf[(1:6)*132+1,,1]
+PACF.132 = PACF$acf[(1:6)*132,,1]
+
+plot(1:6, ACF.132, type="h", xlim=c(1,10), ylab="ACF", xlab="Seasonal Lags", lwd=2); abline(h=0, lty=3)
+plot(1:6, PACF.132, type="h", xlim=c(1,10), ylab="PACF", xlab="Seasonal Lags", lwd=2); abline(h=0, lty=3)
+```
+
+
+The only conclusion to be gained about the seasonal lags is that the PACF tails off after seasonal lag = 1. One could say that the ACF tails off after seasonal lag = 4, but this could also be because of the lack of data past the seasonal lag = 6. A model of ARMA(4,1) could be attempted for the seasonal component.
+
+I unfortunately had issues in R with the period being so large of 132. I was unable to bypass this issue, and so I had to simplify my model down just to get it to run without taking ten minutes. I ultimately had to settle for an ARMA(1,0,2) x $(0,1,1)_{132}$ model given below:
+
+$$
+(1-.9809B)x_t=(1-B^{132})(1-.4642B-.1712B^2)w_t \quad \textrm{with} \quad w_t \sim\ iid \; N(0, 518.8)
+$$
+Some diagnostic from this model are provided below:
+
+```{r, echo = FALSE, message = FALSE, results = 'hide'}
+sarima(sunspots.ts, p=1, d=0, q=2, P=0, D=1, Q=1, S=132, details=T, no.constant = T)
+```
+
+Althoug the ACF of the residuals of this model do not look too bad, the Q-Q plot and p-values show that the residuals are definitely not white noise. This will result in a poor model of the data.
+
+
+```{r, echo = FALSE}
+second_model = arima(sunspots.ts, order=c(1,0,2), seasonal=list(order=c(0,1,1), period=132),include.mean=F)
+second_model.predict = predict(second_model, n.ahead=3)
+
+second_model.predict_Jan_2020 = second_model.predict$pr[1]
+second_model.predict_Jan_2020_CI = c(second_model.predict$pr[1] - 1.96 * second_model.predict$se[1], second_model.predict$pr[1] + 1.96 * second_model.predict$se[1])
+
+second_model.predict_Feb_2020 = second_model.predict$pr[2]
+second_model.predict_Feb_2020_CI = c(second_model.predict$pr[2] - 1.96 * second_model.predict$se[2], second_model.predict$pr[2] + 1.96 * second_model.predict$se[2])
+
+second_model.predict_March_2020 = second_model.predict$pr[3]
+second_model.predict_March_2020_CI = c(second_model.predict$pr[3] - 1.96 * second_model.predict$se[3], second_model.predict$pr[3] + 1.96 * second_model.predict$se[3])
+
+
+second_model.predict_Jan_2020
+second_model.predict_Jan_2020_CI
+
+second_model.predict_Feb_2020
+second_model.predict_Feb_2020_CI
+
+second_model.predict_March_2020
+second_model.predict_March_2020_CI
+```
+
+
