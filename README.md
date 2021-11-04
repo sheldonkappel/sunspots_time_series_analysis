@@ -19,6 +19,6 @@ The project involved us choosing a dataset and then performing a time series ana
 2. Difference the data and fit an appropriate SARIMA model. Here, we were also assigned to look at competing SARIMA models and choose the best one.
 
 ## Results
-The final model I chose to be:
+The final model I decided upon was:
 
-<img src = "capture.PNG" alt = "">
+<img src = "Capture.PNG" alt = "">
