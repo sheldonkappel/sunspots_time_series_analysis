@@ -1,1 +1,1 @@
-# sunspots_time_series_analysis
+# Time Series Analysis for Number of Sunspots in R (School Project)
